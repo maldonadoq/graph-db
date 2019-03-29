@@ -3,7 +3,7 @@
 
 int main(int argc, char const *argv[]){
 	
-	int port = 5555;
+	int port = 4444;
 	int n = 5;
 	int q = 3;
 
