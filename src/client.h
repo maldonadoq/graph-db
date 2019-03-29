@@ -59,19 +59,20 @@ void TClient::onTalking(){
     while(Connect){
     	std::cout << "[Client]: ";
         getline(std::cin, text);
+
+        /*
+        if (-1 == connect(SockFD, (const struct sockaddr *)&SockAddr, sizeof(struct sockaddr_in))){
+            perror("Connect failed");
+            close(SockFD);
+            exit(1);
+        }
+        */
         
         memset(&buffer, 0, buffer_size);
         n = write(SockFD, text.c_str(), text.size()+1);
         if (n < 0){
 			perror("Error Writing from Socket");		
 		}
-
-        memset(&buffer, 0, buffer_size);
-        n = read(SockFD, buffer, buffer_size-1);
-
-        if (n < 0){
-            perror("Error Reading from Socket");        
-        }
     }
     onExit();
 }

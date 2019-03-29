@@ -8,7 +8,7 @@ class TLoadBalancer: public TConnection{
 private:
 	unsigned querys;
 	float *availability;
-	std::queue<std::string> m_queue;
+	std::queue<std::string> m_queue;	
 public:
 	TLoadBalancer(unsigned _query): TConnection(){
 		this->querys = _query;
@@ -17,7 +17,10 @@ public:
 
 	void onListening();
 	void onUpdateQuery();
-	unsigned onAvailable();
+	unsigned getAvailable();
+	int getMaxFD();
+	void rmFD(int);
+	void closeClients();
 };
 
 void TLoadBalancer::onUpdateQuery(){
@@ -25,7 +28,7 @@ void TLoadBalancer::onUpdateQuery(){
 		this->availability[i] = (float)rand()/RAND_MAX;
 }
 
-unsigned TLoadBalancer::onAvailable(){
+unsigned TLoadBalancer::getAvailable(){
 	unsigned ti = 0;
 	float min  = availability[0];
 	srand(time(NULL));
@@ -38,44 +41,105 @@ unsigned TLoadBalancer::onAvailable(){
 	return ti;
 }
 
+int TLoadBalancer::getMaxFD(){
+	int tmp = SockFD;
+	for(unsigned i=0; i<m_clients.size(); i++){
+		if(m_clients[i].first > tmp){
+			tmp = m_clients[i].first;
+		}
+	}
+
+	return tmp;
+}
+
+void TLoadBalancer::rmFD(int _fd){
+	std::vector<std::pair<int, std::string> > tmp;
+	for(unsigned i=0; i<m_clients.size(); i++){
+		if(m_clients[i].first != _fd){
+			tmp.push_back(m_clients[i]);
+		}
+	}
+	m_clients = tmp;
+}
+
+void TLoadBalancer::closeClients(){
+	std::vector<std::pair<int, std::string> > tmp;
+	for(unsigned i=0; i<m_clients.size(); i++){
+		close(m_clients[i].first);
+		FD_CLR(m_clients[i].first, &master);
+	}
+	m_clients.clear();
+}
+
 void TLoadBalancer::onListening(){
 	// do this with the protocol!!
 	int buffer_size = 256;
     char buffer[buffer_size];
 
-    int n;
-    unsigned q;
-    std::string recvd = "Received";
+    FD_ZERO(&master);
+    // add our first socket (server!!)
+    FD_SET(SockFD, &master);
 
 	int ConnectFD;
 	std::cout << "Listening\n";
+
+	fd_set copy;
+
+	sockaddr_in NewSockAddr;
+	socklen_t NewSockAddrSize = sizeof(NewSockAddr);
+
+	int SockCount;
+	int Sock;
+	int Client;
+	int maxFD;
+	int activity;
+	int check;
+	std::string text;
 	
 	while(Connect){
-		onUpdateQuery();
+		copy = master;
+		maxFD = getMaxFD();
+		activity = select(maxFD+1, &copy, NULL, NULL, NULL);
 
-		ConnectFD = accept(SockFD, NULL, NULL);
-		std::cout << ConnectFD << " ";
-		if(0 > ConnectFD){
-	    	perror("Error accept failed");
-	    	exit(1);
-		}
- 
- 		memset(&buffer, 0, buffer_size);
-		n = read(ConnectFD, buffer, buffer_size-1);
-
-		if (n < 0){
-			perror("Error Reading from Socket");		
+		if ((activity < 0) and (errno!=EINTR)){ 
+			printf("Select error");
 		}
 
-		n = write(ConnectFD,recvd.c_str(),recvd.size());
-     	if (n < 0){
-     		perror("Error Writing to socket");
-     	}
+		if(FD_ISSET(SockFD, &master)){
+			Client = accept(SockFD, (sockaddr *)&NewSockAddr, &NewSockAddrSize);
+			if(Client < 0){
+				perror("Error accept failed");
+			    exit(1);
+			}
+			std::cout << "fd: " << Client << "\tip: " << inet_ntoa(NewSockAddr.sin_addr) << "\n";
+			/* text = "Welcome"+std::string(inet_ntoa(NewSockAddr.sin_addr));
+			write(Client, text.c_str(), text.size()+1);*/
 
-		q = onAvailable();
-		printf("[Client]: %s\t%u\n",buffer, q);		
+			FD_SET(Client, &master);
+			m_clients.push_back(std::make_pair(Client, inet_ntoa(NewSockAddr.sin_addr)));			
+		}
+
+		for(unsigned i=0; i<m_clients.size(); i++){
+			Client = m_clients[i].first;
+			if(FD_ISSET(Client, &master)){
+				check = read(Client, buffer, buffer_size);
+				if(check < 0){
+					// perror("Error Reading from Socket");
+					FD_CLR(Client, &master);
+					rmFD(Client);
+					close(Client);
+				}
+				else{
+					onUpdateQuery();
+					// text = to_str(getAvailable());
+					// write(Client, text.c_str(), text.size()+1);
+					printf("[Client]: %s\t%u\n",buffer, getAvailable());
+				}
+			}
+		}
 	}
-	close(ConnectFD);
+
+	closeClients();	
 	onExit();
 }
 

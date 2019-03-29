@@ -11,12 +11,15 @@
 #include <string.h>
 #include <unistd.h>
 #include <iostream>
+#include <vector>
 
 class TConnection{
 protected:
 	struct sockaddr_in SockAddr;
 	int SockFD;
 	bool Connect;
+	std::vector<std::pair<int, std::string> > m_clients;
+	fd_set master;
 public:
 	TConnection();
 	virtual ~TConnection();
@@ -61,6 +64,7 @@ void TConnection::onConnect(int _port){
 
     Connect = true;
     std::cout << "Server Connected\n";
+    m_clients.push_back(std::make_pair(SockFD, "127.0.0.1"));
 }
 
 void TConnection::onExit(){
