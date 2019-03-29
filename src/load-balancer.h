@@ -57,41 +57,43 @@ void TLoadBalancer::onListening(){
 	unsigned idx;
 
 	while(Connect){
-		onUpdateQuery();
-		ClientFD = accept(SockFD, (sockaddr *)&ClientAddr, &ClientAddrSize);
+		ClientFD = accept(SockFD, (struct sockaddr *)&ClientAddr, &ClientAddrSize);
 		if(ClientFD < 0){
 			perror("Error accept failed");
 		    exit(1);
 		}
+		
 		std::cout << "fd: " << ClientFD << "\tip: " << inet_ntoa(ClientAddr.sin_addr) << "\n";
-
-		if((childpid == fork()) == 0){
+		if((childpid = fork()) == 0){
 			close(SockFD);
 
 			//stop listening for new connections by the main process. 
 			//the child will continue to listen. 
 			//the main process now handles the connected client.
 			while(true){
+				onUpdateQuery();
 				memset(buffer, 0, buffer_size);
-				ret = read(ClientFD, buffer, buffer_size);
+				ret = recvfrom(ClientFD, buffer, buffer_size, 0, (struct sockaddr *) &ClientAddr, &ClientAddrSize);
 				if(ret < 0){
-					perror("Error Reading from Client Socket");
+					perror("Error Receiving Data from Client Socket");
+					exit(1);
 				}
 				idx = getAvailable();
 				printf("[%s]: %u\n", buffer, idx);
 
 				text = "-> q[" + std::to_string(idx) + "]";
-				ret = write(ClientFD, text.c_str(), text.size());
+				ret = sendto(ClientFD, text.c_str(), text.size(), 0, (struct sockaddr *) &ClientAddr, ClientAddrSize);
 
 				if(ret < 0){
-					perror("Error Writing to Client Socket");
+					perror("Error Sending Data to Client Socket");
+					exit(1);
 				}
 			}
 		}
 		close(ClientFD);
 	}
 
-	onExit();
+	// onExit();
 }
 
 #endif

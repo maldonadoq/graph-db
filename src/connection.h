@@ -33,29 +33,29 @@ public:
 };
 
 TConnection::TConnection(){
-	this->SockFD = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	this->SockFD = socket(AF_INET, SOCK_STREAM, 0);
 	this->Connect = false;
 }
 
 void TConnection::onConnect(int _port){
-	if(-1 == SockFD){
+	if(SockFD < 0){
 		perror("Can not Create Socket!");
 	}
 
-	memset(&SockAddr, 0, sizeof(struct sockaddr_in));
+	memset(&SockAddr, 0, sizeof(SockAddr));
 	SockAddr.sin_family = AF_INET;    
-    SockAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-    SockAddr.sin_port = htons(_port);
+    SockAddr.sin_addr.s_addr = INADDR_ANY;
+    SockAddr.sin_port = _port;
 
 	// Validate bind socket address
-    if(-1 == bind(SockFD,(const struct sockaddr *)&SockAddr, sizeof(struct sockaddr_in))){
+    if(bind(SockFD,(const struct sockaddr *)&SockAddr, sizeof(SockAddr)) < 0){
 		perror("Error Bind Failed");
 		close(SockFD);
 		exit(1);
     }
 
     // Validate if the socket is listening
-    if(-1 == listen(SockFD, 10)){
+    if(listen(SockFD, 10) < 0){
 		perror("Error listen failed");
 		close(SockFD);
 		exit(1);
