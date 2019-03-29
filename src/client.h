@@ -43,13 +43,15 @@ void TClient::onTalking(){
     while(Connect){
     	std::cout << "[Client]: ";
         getline(std::cin, text);
-                
-        ret = sendto(SockFD, text.c_str(), text.size(), 0, (struct sockaddr *) &SockAddr, sizeof(SockAddr));
+        
+        // ret = sendto(SockFD, text.c_str(), text.size(), 0, (struct sockaddr *) &SockAddr, sizeof(SockAddr));        
+        ret = write(SockFD, text.c_str(), text.size());
         if (ret < 0){
 			perror("Error Sending Data to Server Socket");
 		}
 
-        ret = recvfrom(SockFD, buffer, buffer_size, 0, NULL, NULL);
+        // ret = recvfrom(SockFD, buffer, buffer_size, 0, NULL, NULL);
+        ret = read(SockFD, buffer, buffer_size);
         if (ret < 0){
             perror("Error Receiving Data from Server Socket");
         }

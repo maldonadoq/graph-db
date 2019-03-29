@@ -73,7 +73,8 @@ void TLoadBalancer::onListening(){
 			while(true){
 				onUpdateQuery();
 				memset(buffer, 0, buffer_size);
-				ret = recvfrom(ClientFD, buffer, buffer_size, 0, (struct sockaddr *) &ClientAddr, &ClientAddrSize);
+				// ret = recvfrom(ClientFD, buffer, buffer_size, 0, (struct sockaddr *) &ClientAddr, &ClientAddrSize);
+				ret = read(ClientFD, buffer, buffer_size);
 				if(ret < 0){
 					perror("Error Receiving Data from Client Socket");
 					exit(1);
@@ -82,7 +83,8 @@ void TLoadBalancer::onListening(){
 				printf("[%s]: %u\n", buffer, idx);
 
 				text = "-> q[" + std::to_string(idx) + "]";
-				ret = sendto(ClientFD, text.c_str(), text.size(), 0, (struct sockaddr *) &ClientAddr, ClientAddrSize);
+				// ret = sendto(ClientFD, text.c_str(), text.size(), 0, (struct sockaddr *) &ClientAddr, ClientAddrSize);
+				ret = write(ClientFD, text.c_str(), text.size());
 
 				if(ret < 0){
 					perror("Error Sending Data to Client Socket");
