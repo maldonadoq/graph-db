@@ -3,6 +3,7 @@
 
 #include "connection.h"
 #include <queue>
+#include <string>
 
 class TLoadBalancer: public TConnection{
 private:
@@ -18,9 +19,6 @@ public:
 	void onListening();
 	void onUpdateQuery();
 	unsigned getAvailable();
-	int getMaxFD();
-	void rmFD(int);
-	void closeClients();
 };
 
 void TLoadBalancer::onUpdateQuery(){
@@ -41,105 +39,58 @@ unsigned TLoadBalancer::getAvailable(){
 	return ti;
 }
 
-int TLoadBalancer::getMaxFD(){
-	int tmp = SockFD;
-	for(unsigned i=0; i<m_clients.size(); i++){
-		if(m_clients[i].first > tmp){
-			tmp = m_clients[i].first;
-		}
-	}
-
-	return tmp;
-}
-
-void TLoadBalancer::rmFD(int _fd){
-	std::vector<std::pair<int, std::string> > tmp;
-	for(unsigned i=0; i<m_clients.size(); i++){
-		if(m_clients[i].first != _fd){
-			tmp.push_back(m_clients[i]);
-		}
-	}
-	m_clients = tmp;
-}
-
-void TLoadBalancer::closeClients(){
-	std::vector<std::pair<int, std::string> > tmp;
-	for(unsigned i=0; i<m_clients.size(); i++){
-		close(m_clients[i].first);
-		FD_CLR(m_clients[i].first, &master);
-	}
-	m_clients.clear();
-}
-
 void TLoadBalancer::onListening(){
 	// do this with the protocol!!
 	int buffer_size = 256;
     char buffer[buffer_size];
 
-    FD_ZERO(&master);
-    // add our first socket (server!!)
-    FD_SET(SockFD, &master);
-
-	int ConnectFD;
+	int ClientFD;
 	std::cout << "Listening\n";
 
-	fd_set copy;
-
-	sockaddr_in NewSockAddr;
-	socklen_t NewSockAddrSize = sizeof(NewSockAddr);
-
-	int SockCount;
-	int Sock;
-	int Client;
-	int maxFD;
-	int activity;
-	int check;
-	std::string text;
+	sockaddr_in ClientAddr;
+	socklen_t ClientAddrSize = sizeof(ClientAddr);
 	
+	std::string text;
+	pid_t childpid;
+
+	int ret;
+	unsigned idx;
+
 	while(Connect){
-		copy = master;
-		maxFD = getMaxFD();
-		activity = select(maxFD+1, &copy, NULL, NULL, NULL);
-
-		if ((activity < 0) and (errno!=EINTR)){ 
-			printf("Select error");
+		onUpdateQuery();
+		ClientFD = accept(SockFD, (sockaddr *)&ClientAddr, &ClientAddrSize);
+		if(ClientFD < 0){
+			perror("Error accept failed");
+		    exit(1);
 		}
+		std::cout << "fd: " << ClientFD << "\tip: " << inet_ntoa(ClientAddr.sin_addr) << "\n";
 
-		if(FD_ISSET(SockFD, &master)){
-			Client = accept(SockFD, (sockaddr *)&NewSockAddr, &NewSockAddrSize);
-			if(Client < 0){
-				perror("Error accept failed");
-			    exit(1);
-			}
-			std::cout << "fd: " << Client << "\tip: " << inet_ntoa(NewSockAddr.sin_addr) << "\n";
-			/* text = "Welcome"+std::string(inet_ntoa(NewSockAddr.sin_addr));
-			write(Client, text.c_str(), text.size()+1);*/
+		if((childpid == fork()) == 0){
+			close(SockFD);
 
-			FD_SET(Client, &master);
-			m_clients.push_back(std::make_pair(Client, inet_ntoa(NewSockAddr.sin_addr)));			
-		}
-
-		for(unsigned i=0; i<m_clients.size(); i++){
-			Client = m_clients[i].first;
-			if(FD_ISSET(Client, &master)){
-				check = read(Client, buffer, buffer_size);
-				if(check < 0){
-					// perror("Error Reading from Socket");
-					FD_CLR(Client, &master);
-					rmFD(Client);
-					close(Client);
+			//stop listening for new connections by the main process. 
+			//the child will continue to listen. 
+			//the main process now handles the connected client.
+			while(true){
+				memset(buffer, 0, buffer_size);
+				ret = read(ClientFD, buffer, buffer_size);
+				if(ret < 0){
+					perror("Error Reading from Client Socket");
 				}
-				else{
-					onUpdateQuery();
-					// text = to_str(getAvailable());
-					// write(Client, text.c_str(), text.size()+1);
-					printf("[Client]: %s\t%u\n",buffer, getAvailable());
+				idx = getAvailable();
+				printf("[%s]: %u\n", buffer, idx);
+
+				text = "-> q[" + std::to_string(idx) + "]";
+				ret = write(ClientFD, text.c_str(), text.size());
+
+				if(ret < 0){
+					perror("Error Writing to Client Socket");
 				}
 			}
 		}
+		close(ClientFD);
 	}
 
-	closeClients();	
 	onExit();
 }
 

@@ -50,29 +50,25 @@ void TClient::onTalking(){
 	// do this with the protocol!!
 	int buffer_size = 256;
     char buffer[buffer_size];
-    int n;
+    int ret;
 
-    // se desconecta!!! tengo que guardar las ip de los que se conectan
-    // y dejar la sesión abierta!
     std::cout << "Talking\n";
     std::string text = "";
+    memset(&buffer, 0, buffer_size);
     while(Connect){
     	std::cout << "[Client]: ";
         getline(std::cin, text);
-
-        /*
-        if (-1 == connect(SockFD, (const struct sockaddr *)&SockAddr, sizeof(struct sockaddr_in))){
-            perror("Connect failed");
-            close(SockFD);
-            exit(1);
-        }
-        */
-        
-        memset(&buffer, 0, buffer_size);
-        n = write(SockFD, text.c_str(), text.size()+1);
-        if (n < 0){
-			perror("Error Writing from Socket");		
+                
+        ret = write(SockFD, text.c_str(), text.size()+1);
+        if (ret < 0){
+			perror("Error Writing to Server Socket");
 		}
+
+        ret = read(SockFD, buffer, buffer_size);
+        if (ret < 0){
+            perror("Error Reading to Server Socket");
+        }
+        printf(" |%s\n", buffer);
     }
     onExit();
 }
