@@ -1,65 +1,70 @@
 #ifndef _CLIENT_H_
 #define _CLIENT_H_
 
-#include "connection.h"
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <string.h>
+#include <thread>
+#include "read-write.h"
 
-class TClient: public TConnection{
+class TClient{
+private:
+    int m_clientSock;
+    struct sockaddr_in m_clientAddr;
 public:
-	TClient(): TConnection(){	};
-
-	void onConnect(std::string, int);
-	void onTalking();
+    TClient();
+    void Connect(std::string, int);
+    void Talking();
 };
 
-void TClient::onConnect(std::string _ip, int _port){
-    if(SockFD < 0){
+TClient::TClient(){
+    this->m_clientSock = socket(AF_INET, SOCK_STREAM, 0);
+}
+
+void TClient::Connect(std::string _ip, int _port){
+    if(m_clientSock < 0){
         perror("Can not Create Socket!");
         exit(0);
     }
 
-    memset(&SockAddr, 0, sizeof(SockAddr));
-    SockAddr.sin_family = AF_INET;
-    SockAddr.sin_port = _port;
-    SockAddr.sin_addr.s_addr = inet_addr(_ip.c_str());
+    memset(&m_clientAddr, 0, sizeof(m_clientAddr));
+    m_clientAddr.sin_family = AF_INET;
+    m_clientAddr.sin_port = htons(_port);
+    // m_clientAddr.sin_addr.s_addr = inet_addr(_ip.c_str());
  
-    if (connect(SockFD, (const struct sockaddr *)&SockAddr, sizeof(SockAddr)) < 0){
-        perror("Connect failed");        
+    int res = inet_pton(AF_INET, _ip.c_str(), &m_clientAddr.sin_addr);
+ 
+    if (0 > res){
+      perror("error: first parameter is not a valid address family");
+      close(m_clientSock);
+      exit(EXIT_FAILURE);
+    }
+    else if (0 == res){
+      perror("char string (second parameter does not contain valid ipaddress");
+      close(m_clientSock);
+      exit(EXIT_FAILURE);
+    }
+
+    if (connect(m_clientSock, (const struct sockaddr *)&m_clientAddr, sizeof(m_clientAddr)) < 0){
+        perror("Connect failed"); 
         exit(1);
     }
 
-    Connect = true;
     std::cout << "Client Connected\n";
 }
 
-void TClient::onTalking(){
-	// do this with the protocol!! 
-	int buffer_size = 256;
-    char buffer[buffer_size];
-    int ret;
+void TClient::Talking(){
+    std::cout << "Client Talking\n";
 
-    std::cout << "Talking\n";
-    std::string text = "";
-    memset(&buffer, 0, buffer_size);
-    while(Connect){
-    	std::cout << "[Client]: ";
-        getline(std::cin, text);
-        
-        // ret = sendto(SockFD, text.c_str(), text.size(), 0, (struct sockaddr *) &SockAddr, sizeof(SockAddr));        
-        ret = write(SockFD, text.c_str(), text.size());
-        if (ret < 0){
-			perror("Error Sending Data to Server Socket");
-		}
+    std::thread tread(thread_read,   m_clientSock);
+    std::thread twrite(thread_write, m_clientSock);
 
-        // ret = recvfrom(SockFD, buffer, buffer_size, 0, NULL, NULL);
-        ret = read(SockFD, buffer, buffer_size);
-        if (ret < 0){
-            perror("Error Receiving Data from Server Socket");
-        }
-        else{
-            printf(" |%s\n", buffer);
-        }        
-    }
-    onExit();
+    tread.join();
+    twrite.join();
+
+    close(m_clientSock);
 }
 
 #endif

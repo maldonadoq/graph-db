@@ -2,15 +2,12 @@
 #include "src/load-balancer.h"
 
 int main(int argc, char const *argv[]){
-	
-	int port = 4444;
-	int n = 5;
-	int q = 3;
+	int port = 8888;
+	TLoadBalancer *s = new TLoadBalancer();
 
-	TLoadBalancer *lb = new TLoadBalancer(q);
-	lb->onConnect(port);
-	lb->onListening();
+	s->Connect(port);
+	s->Listening();
 
-	delete lb;
+	delete s;
 	return 0;
 }
