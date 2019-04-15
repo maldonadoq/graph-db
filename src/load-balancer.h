@@ -7,32 +7,35 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <thread>
+#include <mutex>
 
-#include "data.h"
-#include "mthread.h"
+#include "client-info.h"
+#include "mthr.h"
 
 class TLoadBalancer{
 private:
-	static std::vector<TData> m_clients;	
+	static std::mutex m_mutex;
+	static std::vector<TClientInfo> m_clients;	
 
 	int m_serverSock, m_clientSock;
 	struct sockaddr_in m_serverAddr, m_clientAddr;
 
-	static void SendToAll(std::string);
-	static int  FindClientIdx(TData *);	
+	static void SendToAll(std::string, int);
+	static int  FindClientIdx(TClientInfo *);	
 public:
 	TLoadBalancer();
 	~TLoadBalancer();
 
 	void Connect(int);
 	void Listening();
-	static void HandleClient(TData *);
+	static void HandleClient(TClientInfo *);
 };
 
-std::vector<TData> TLoadBalancer::m_clients;
+std::vector<TClientInfo> TLoadBalancer::m_clients;
+std::mutex TLoadBalancer::m_mutex;
 
 TLoadBalancer::TLoadBalancer(){
-	// TThread::InitMutex();
 	m_serverSock = socket(AF_INET, SOCK_STREAM, 0);	
 }
 
@@ -56,15 +59,14 @@ void TLoadBalancer::Connect(int _port){
 }
 
 void TLoadBalancer::Listening(){
-	TData   *cli;
-	// std::thread thr;
+	TClientInfo   *cli;
 	TThread *thr;
 
 	socklen_t cli_size = sizeof(sockaddr_in);
 
 	std::cout << "Server Listening!\n";
 	while(true){
-		cli = new TData();
+		cli = new TClientInfo();
 		thr = new TThread();
 
 		// block
@@ -77,15 +79,14 @@ void TLoadBalancer::Listening(){
 	}
 }
 
-void TLoadBalancer::HandleClient(TData *cli){
-	// TData *cli = (TData  *)_args;
+void TLoadBalancer::HandleClient(TClientInfo *cli){
 
 	char buffer[256-25];
 	std::string text = "";
 
 	int idx, n;
 
-	TThread::LockMutex(cli->m_name);
+	TLoadBalancer::m_mutex.lock();
 
 		cli->SetId(TLoadBalancer::m_clients.size());
 		cli->SetName("[client "+std::to_string(cli->m_id)+"]");
@@ -93,7 +94,7 @@ void TLoadBalancer::HandleClient(TData *cli){
 		std::cout << cli->m_name << " connected\tid: " << cli->m_id << "\n";
 		TLoadBalancer::m_clients.push_back(*cli);
 
-	TThread::UnlockMutex(cli->m_name);	
+	TLoadBalancer::m_mutex.unlock();
 	
 	while(true){
 		memset(buffer, 0, sizeof(buffer));
@@ -103,33 +104,35 @@ void TLoadBalancer::HandleClient(TData *cli){
 			std::cout << cli->m_name << " disconneted\n";
 			close(cli->m_sock);
 
-			TThread::LockMutex(cli->m_name);
+			TLoadBalancer::m_mutex.lock();
 				idx = TLoadBalancer::FindClientIdx(cli);
 				TLoadBalancer::m_clients.erase(TLoadBalancer::m_clients.begin()+idx);
-			TThread::UnlockMutex(cli->m_name);
+			TLoadBalancer::m_mutex.unlock();
 			break;
 		}
 		else if(n < 0){
 			perror("error receiving text");
 		}
 		else{
-			text = std::string(buffer);
-			TLoadBalancer::SendToAll(text);
+			text = cli->m_name + ": " + std::string(buffer);
+			// send(cli->m_sock, text.c_str(), text.size(), 0);
+			TLoadBalancer::SendToAll(text, cli->m_sock);
 		}
 	}
-
-	// return NULL;
 }
 
-void TLoadBalancer::SendToAll(std::string text){
-	TThread::LockMutex("'Send'");
+void TLoadBalancer::SendToAll(std::string _text, int _sock){
+	TLoadBalancer::m_mutex.lock();
 		// std::cout << "\ntext sending: " << text << "\n";
-		for(unsigned i=0; i<m_clients.size(); i++)
-			send(TLoadBalancer::m_clients[i].m_sock, text.c_str(), text.size(), 0);
-	TThread::UnlockMutex("'Send'");
+		for(unsigned i=0; i<m_clients.size(); i++){
+			if(TLoadBalancer::m_clients[i].m_sock != _sock){
+				send(TLoadBalancer::m_clients[i].m_sock, _text.c_str(), _text.size(), 0);
+			}
+		}
+	TLoadBalancer::m_mutex.unlock();
 }
 
-int TLoadBalancer::FindClientIdx(TData *_cli){
+int TLoadBalancer::FindClientIdx(TClientInfo *_cli){
 	for(unsigned i=0; i<m_clients.size(); i++)
 		if(TLoadBalancer::m_clients[i].m_id == _cli->m_id)
 			return i;
