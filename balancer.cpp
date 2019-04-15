@@ -2,11 +2,21 @@
 #include "src/load-balancer.h"
 
 int main(int argc, char const *argv[]){
-	int port = 8888;
+	int cport = 8888;
+	int qport = 7777;
 	TLoadBalancer *s = new TLoadBalancer();
 
-	s->Connect(port);
-	s->Listening();
+	s->ClientPort(cport);
+	s->QueryPort(qport);
+
+	std::cout << "\n-------------------------------\n\n";
+
+	std::thread client(TLoadBalancer::ListeningClients);
+	std::thread query(TLoadBalancer::ListeningQuerys);
+
+	client.join();
+	query.join();
+	//s->ListeningClients();
 
 	delete s;
 	return 0;
