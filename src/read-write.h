@@ -39,7 +39,7 @@ void thread_qwrite(int _sockFD, int _sleep){
 	}
 }
 
-void thread_qread(int _sockFD){
+void thread_qread(int _sockFD, int _sockDB){
 	unsigned buffer_size = 256;
 	char buffer[buffer_size];
 
@@ -47,6 +47,7 @@ void thread_qread(int _sockFD){
 		memset(&buffer, 0, buffer_size);
 		if(recv(_sockFD, buffer, buffer_size, 0) > 0){			
 			std::cout << buffer << "\n";
+			send(_sockDB, buffer, buffer_size, 0);
 		}
 	}
 }
