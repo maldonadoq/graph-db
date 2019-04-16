@@ -1,9 +1,10 @@
 #include <iostream>
 #include "src/load-balancer.h"
 
+// g++ -std=c++11 -pthread balancer.cpp -o balancer.out
 int main(int argc, char const *argv[]){
-	int cport = 8888;
-	int qport = 7777;
+	int cport = 8888;		// port to clients
+	int qport = 7777;		// port to query's server
 	TLoadBalancer *s = new TLoadBalancer();
 
 	s->ClientPort(cport);
