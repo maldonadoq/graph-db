@@ -12,7 +12,7 @@
 #include <mutex>
 
 #include "socket-info.h"
-#include "mthr.h"
+#include "thread-u.h"
 
 class TLoadBalancer{
 private:
