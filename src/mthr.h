@@ -5,7 +5,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
-#include "client-info.h"
+#include "socket-info.h"
 
 class TThread{
 public:
@@ -14,7 +14,7 @@ public:
 	TThread();
 	~TThread();
 
-	void Create(void (*callback)(TClientInfo *), TClientInfo *dat);
+	void Create(void (*callback)(TSocket *), TSocket *dat);
 	void Join();	
 };
 
@@ -22,7 +22,7 @@ TThread::TThread(){
 
 }
 
-void TThread::Create(void (*callback)(TClientInfo *), TClientInfo *dat){
+void TThread::Create(void (*callback)(TSocket *), TSocket *dat){
 	this->m_tid = std::thread(callback, dat);
 }
 
