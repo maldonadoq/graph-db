@@ -1,15 +1,16 @@
 #include <iostream>
-#include "src/client.h"
+#include "src/query.h"
 
 int main(int argc, char const *argv[]){
 		
 	std::string ip = "192.168.1.41";
 	int port = 7777;
 
-	TClient *cl = new TClient();
-	cl->Connect(ip, port);
-	cl->Talking();
+	TQuery *q = new TQuery();
+	q->Connect(ip, port);
+	q->Talking();
 
-	delete cl;
+	delete q;
+
 	return 0;
 }
