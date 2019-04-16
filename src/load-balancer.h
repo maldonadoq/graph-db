@@ -11,7 +11,7 @@
 #include <thread>
 #include <mutex>
 
-#include "client-info.h"
+#include "socket-info.h"
 #include "mthr.h"
 
 class TLoadBalancer{
@@ -19,8 +19,8 @@ private:
 	static std::mutex m_cmutex;
 	static std::mutex m_qmutex;
 
-	static std::vector<TClientInfo> m_clients;
-	static std::vector<TClientInfo> m_querys;
+	static std::vector<TSocket> m_clients;
+	static std::vector<TSocket> m_querys;
 
 	struct sockaddr_in m_serverAddrClients;
 	struct sockaddr_in m_serverAddrQuerys;
@@ -30,8 +30,9 @@ private:
 
 	static void SendToAllClients(std::string, int);
 	static void SendToAllQuerys(std::string, int);
-	static int  FindClientIdx(TClientInfo *);	
-	static int  FindQueryIdx(TClientInfo *);	
+	static int  FindClientIdx(TSocket *);	
+	static int  FindQueryIdx(TSocket *);
+	static int 	FindQuerySockAvailable();
 public:
 	TLoadBalancer();
 	~TLoadBalancer();
@@ -39,15 +40,18 @@ public:
 	void ClientPort(int);
 	void QueryPort(int);
 
-	static void HandleClient(TClientInfo *);
-	static void HandleQuery(TClientInfo *);
+	static void HandleClient(TSocket *);
+	static void HandleQuery(TSocket *);
 	
 	static void ListeningClients();
 	static void ListeningQuerys();
+
+	static void PrintClientSockets();
+	static void PrintQuerySockets();
 };
 
-std::vector<TClientInfo> TLoadBalancer::m_clients;
-std::vector<TClientInfo> TLoadBalancer::m_querys;
+std::vector<TSocket> TLoadBalancer::m_clients;
+std::vector<TSocket> TLoadBalancer::m_querys;
 
 int TLoadBalancer::m_serverSockClients;
 int TLoadBalancer::m_serverSockQuerys;
@@ -76,19 +80,18 @@ void TLoadBalancer::ClientPort(int _port){
         perror("Failed to bind");
 
     listen(m_serverSockClients, 5);
-    std::cout << "Server to Clients Created!\n";
-    std::cout << "Server to Clients Listening!\n";
+    std::cout << "Server to Clients Created! [Listening]\n";
 }
 
 void TLoadBalancer::ListeningClients(){
-	TClientInfo	*cli;
+	TSocket	*cli;
 	TThread		*thr;
 
 	socklen_t cli_size = sizeof(sockaddr_in);
 	struct sockaddr_in m_clientAddr;
 
 	while(true){
-		cli = new TClientInfo();
+		cli = new TSocket();
 		thr = new TThread();
 
 		// block
@@ -103,7 +106,7 @@ void TLoadBalancer::ListeningClients(){
 	}
 }
 
-void TLoadBalancer::HandleClient(TClientInfo *cli){
+void TLoadBalancer::HandleClient(TSocket *cli){
 
 	char buffer[256];
 	std::string text = "";
@@ -117,8 +120,12 @@ void TLoadBalancer::HandleClient(TClientInfo *cli){
 		std::cout << "client: " << cli->m_name << " connected\tid: " << cli->m_id << "\n";
 		TLoadBalancer::m_clients.push_back(*cli);
 
+		// PrintClientSockets();
+	    // PrintQuerySockets();
+
 	TLoadBalancer::m_cmutex.unlock();
 	
+	int sockquery;
 	while(true){
 		memset(buffer, 0, sizeof(buffer));
 		n = recv(cli->m_sock, buffer, sizeof(buffer), 0);
@@ -136,10 +143,16 @@ void TLoadBalancer::HandleClient(TClientInfo *cli){
 		else if(n < 0){
 			perror("error receiving text");
 		}
-		else{
-			text = cli->m_name + ": " + std::string(buffer);
+		else{			
+			sockquery = TLoadBalancer::FindQuerySockAvailable();
+
+			if(sockquery > 0){
+				text = cli->m_name + ": " + std::string(buffer);
+				send(sockquery, text.c_str(), text.size(), 0);
+			}
+
 			// send(cli->m_sock, text.c_str(), text.size(), 0);
-			TLoadBalancer::SendToAllClients(text, cli->m_sock);
+			// TLoadBalancer::SendToAllClients(text, cli->m_sock);
 		}
 	}
 }
@@ -159,59 +172,61 @@ void TLoadBalancer::QueryPort(int _port){
         perror("Failed to bind");
 
     listen(m_serverSockQuerys, 5);
-    std::cout << "Server to Querys Created!\n";
-    std::cout << "Server to Querys Listening!\n";
+    std::cout << "Server to Querys Created! [Listening]\n";
 }
 
 void TLoadBalancer::ListeningQuerys(){
-	TClientInfo	*cli;
+	TSocket	*qu;
 	TThread		*thr;
 
 	socklen_t cli_size = sizeof(sockaddr_in);
 	struct sockaddr_in m_queryAddr;
 
 	while(true){
-		cli = new TClientInfo();
+		qu = new TSocket();
 		thr = new TThread();
 
 		// block
-		cli->m_sock = accept(m_serverSockQuerys, (struct sockaddr *) &m_queryAddr, &cli_size);
+		qu->m_sock = accept(m_serverSockQuerys, (struct sockaddr *) &m_queryAddr, &cli_size);
 
-	    if(cli->m_sock < 0)
+	    if(qu->m_sock < 0)
 	        perror("Error on accept");
 	    else{
-	    	cli->SetName(inet_ntoa(m_queryAddr.sin_addr));
-	        thr->Create(TLoadBalancer::HandleQuery, cli);
+	    	qu->SetName(inet_ntoa(m_queryAddr.sin_addr));
+	        thr->Create(TLoadBalancer::HandleQuery, qu);
 	    }
 	}
 }
 
-void TLoadBalancer::HandleQuery(TClientInfo *cli){
+void TLoadBalancer::HandleQuery(TSocket *qu){
 
-	char buffer[256];
+	char buffer[2];
 	std::string text = "";
 
 	int idx, n;
 
 	TLoadBalancer::m_qmutex.lock();
 
-		cli->SetId(TLoadBalancer::m_querys.size());
+		qu->SetId(TLoadBalancer::m_querys.size());
 	
-		std::cout << "query: " << cli->m_name << " connected\tid: " << cli->m_id << "\n";
-		TLoadBalancer::m_querys.push_back(*cli);
+		std::cout << "query: " << qu->m_name << " connected\tid: " << qu->m_id << "\n";
+		TLoadBalancer::m_querys.push_back(*qu);
+
+		// PrintClientSockets();
+	    // PrintQuerySockets();
 
 	TLoadBalancer::m_qmutex.unlock();
 	
 	while(true){
 		memset(buffer, 0, sizeof(buffer));
-		n = recv(cli->m_sock, buffer, sizeof(buffer), 0);
+		n = recv(qu->m_sock, buffer, sizeof(buffer), 0);
 
 		if(n == 0){
-			std::cout << cli->m_name << " disconneted\n";
-			close(cli->m_sock);
+			std::cout << qu->m_name << " disconneted\n";
+			close(qu->m_sock);
 
 			TLoadBalancer::m_qmutex.lock();
-				idx = TLoadBalancer::FindQueryIdx(cli);
+				idx = TLoadBalancer::FindQueryIdx(qu);
 				TLoadBalancer::m_querys.erase(TLoadBalancer::m_querys.begin()+idx);
 			TLoadBalancer::m_qmutex.unlock();
 			break;
@@ -220,9 +235,10 @@ void TLoadBalancer::HandleQuery(TClientInfo *cli){
 			perror("error receiving text");
 		}
 		else{
-			text = cli->m_name + ": " + std::string(buffer);
-			// send(cli->m_sock, text.c_str(), text.size(), 0);
-			TLoadBalancer::SendToAllQuerys(text, cli->m_sock);
+			// std::cout << atof(buffer) << " ";
+			idx = TLoadBalancer::FindQueryIdx(qu);
+			TLoadBalancer::m_querys[idx].SetAvailable(atof(buffer));
+			// qu->SetAvailable(atof(buffer));
 		}
 	}
 }
@@ -247,7 +263,7 @@ void TLoadBalancer::SendToAllQuerys(std::string _text, int _sock){
 	TLoadBalancer::m_qmutex.unlock();
 }
 
-int TLoadBalancer::FindClientIdx(TClientInfo *_cli){
+int TLoadBalancer::FindClientIdx(TSocket *_cli){
 	for(unsigned i=0; i<m_clients.size(); i++)
 		if(TLoadBalancer::m_clients[i].m_id == _cli->m_id)
 			return i;
@@ -255,12 +271,47 @@ int TLoadBalancer::FindClientIdx(TClientInfo *_cli){
 	return 0;
 }
 
-int TLoadBalancer::FindQueryIdx(TClientInfo *_cli){
+int TLoadBalancer::FindQueryIdx(TSocket *_q){
 	for(unsigned i=0; i<m_querys.size(); i++)
-		if(TLoadBalancer::m_querys[i].m_id == _cli->m_id)
+		if(TLoadBalancer::m_querys[i].m_id == _q->m_id)
 			return i;
 
 	return 0;
+}
+
+int TLoadBalancer::FindQuerySockAvailable(){
+	
+	if(TLoadBalancer::m_querys.size() > 0){
+		float min = TLoadBalancer::m_querys[0].m_available;
+		int sock = TLoadBalancer::m_querys[0].m_sock;
+
+		for(unsigned i=1; i<TLoadBalancer::m_querys.size(); i++){
+			if(TLoadBalancer::m_querys[i].m_available < min){
+				min = TLoadBalancer::m_querys[i].m_available;
+				sock = TLoadBalancer::m_querys[i].m_sock;
+			}
+		}
+
+		return sock;
+	}
+
+	return -1;
+}
+
+void TLoadBalancer::PrintClientSockets(){
+	std::cout << "Clients: ";
+	for(unsigned i=0; i<TLoadBalancer::m_clients.size(); i++)	
+		std::cout << TLoadBalancer::m_clients[i].m_sock << " ";
+
+	std::cout << "\n";
+}
+
+void TLoadBalancer::PrintQuerySockets(){
+	std::cout << "Querys:  ";
+	for(unsigned i=0; i<TLoadBalancer::m_querys.size(); i++)	
+		std::cout << TLoadBalancer::m_querys[i].m_sock << " ";
+
+	std::cout << "\n";
 }
 
 TLoadBalancer::~TLoadBalancer(){
